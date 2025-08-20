@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Muscle Sensor Website</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles/style.css') }}">
+  <style>
+    .error { color: red; font-size: 0.85rem; margin-top: 0.25rem; }
+    .form-wide-error { color: red; font-size: 0.95rem; margin-top: 0.75rem; }
+    .notice { color: #0a7; font-size: 0.95rem; margin-top: 0.75rem; }
+    .status {
+      margin-top: 0.75rem; padding: 0.35rem 0.6rem; border-radius: 999px;
+      font-size: 0.85rem; display: inline-block;
+    }
+    .ok { background: #e6f7f0; color: #0a7; border: 1px solid #bfe9d8; }
+    .bad { background: #fdeaea; color: #b30000; border: 1px solid #f5c2c2; }
+    .row { margin-top: .75rem; display: flex; gap: .5rem; align-items: center; }
+    .secondary {
+      background: #eee; color: #333; border: none; border-radius: 8px;
+      padding: .6rem .9rem; cursor: pointer;
+    }
+    .secondary:hover { background: #e2e2e2; }
+  </style>
+</head>
+<body>
+  <h1>Muscle Sensor Website</h1>
+
+  <form class="form-container" action="{{ url_for('connect') }}" method="POST" novalidate>
+    <div>
+      <input type="text" id="ip" name="ip" placeholder="Enter IP" value="{{ ip or '' }}">
+      {% if errors and errors.get('ip') %}<div class="error">{{ errors['ip'] }}</div>{% endif %}
+    </div>
+    <div>
+      <input type="text" id="port" name="port" placeholder="Enter Port" value="{{ port or '' }}">
+      {% if errors and errors.get('port') %}<div class="error">{{ errors['port'] }}</div>{% endif %}
+    </div>
+    <button type="submit">Connect</button>
+
+    {# --- ONE place to show any connection-wide error --- #}
+    {% set connection_msg = (errors['connection'] if errors and errors.get('connection') else status_error) %}
+    {% if connection_msg %}
+      <div class="form-wide-error">{{ connection_msg }}</div>
+    {% endif %}
+
+    {% if success %}
+      <div class="notice">{{ success }}</div>
+    {% endif %}
+  </form>
+
+  <div class="row">
+    <span class="status {{ 'ok' if connected else 'bad' }}">
+      {{ 'Connected' if connected else 'Disconnected' }}
+    </span>
+
+    {# Removed the extra status_error echo here to avoid duplicates #}
+    {% if connected %}
+      <form action="{{ url_for('disconnect') }}" method="POST">
+        <button class="secondary" type="submit">Disconnect</button>
+      </form>
+    {% endif %}
+  </div>
+</body>
+</html>
