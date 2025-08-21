@@ -20,11 +20,36 @@
       padding: .6rem .9rem; cursor: pointer;
     }
     .secondary:hover { background: #e2e2e2; }
+
+    /* --- SVG container and sizing fixes --- */
+    .svg-wrap {
+      display: grid;
+      place-items: center;
+      margin-top: 20px;
+      background: #fff;
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.06);
+      border: 1px solid #e5e5e5;
+    }
+    #svgHost {
+      min-height: 420px;       /* ensure visible area for the SVG */
+      display: grid;
+      place-items: center;
+      width: 100%;
+    }
+    #svgHost svg {
+      width: 100%;
+      max-width: 420px;        /* tweak to taste */
+      height: auto;
+      display: block;
+    }
   </style>
 </head>
 <body>
   <h1>Muscle Sensor Website</h1>
 
+  <!-- Connect form -->
   <form class="form-container" action="{{ url_for('connect') }}" method="POST" novalidate>
     <div>
       <input type="text" id="ip" name="ip" placeholder="Enter IP" value="{{ ip or '' }}">
@@ -36,7 +61,6 @@
     </div>
     <button type="submit">Connect</button>
 
-    {# --- ONE place to show any connection-wide error --- #}
     {% set connection_msg = (errors['connection'] if errors and errors.get('connection') else status_error) %}
     {% if connection_msg %}
       <div class="form-wide-error">{{ connection_msg }}</div>
@@ -47,17 +71,131 @@
     {% endif %}
   </form>
 
+  <!-- Status + Disconnect -->
   <div class="row">
     <span class="status {{ 'ok' if connected else 'bad' }}">
       {{ 'Connected' if connected else 'Disconnected' }}
     </span>
 
-    {# Removed the extra status_error echo here to avoid duplicates #}
     {% if connected %}
       <form action="{{ url_for('disconnect') }}" method="POST">
         <button class="secondary" type="submit">Disconnect</button>
       </form>
     {% endif %}
   </div>
+
+  <!-- SVG host -->
+  <div class="svg-wrap">
+    <div id="svgHost" aria-label="Anatomy (front)"></div>
+  </div>
+
+  <!-- Live colouring script -->
+  <script>
+    // Build a correct static URL server-side
+    const SVG_PATH = "{{ url_for('static', filename='svg/body-front.svg') }}";
+
+    // --- config ---
+    const MAX_MV_CLIP = 2900;   // top of colour scale (mV)
+    const EMA_ALPHA   = 0.25;  // smoothing factor (0..1)
+
+    // --- utils ---
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    function heatColor01(t){
+      // 0..1 → green → yellow → red
+      const h = t < 0.5 ? 130 + (60-130)*(t/0.5) : 60 + (0-60)*((t-0.5)/0.5);
+      return `hsl(${h}, 90%, 45%)`;
+    }
+    const baseName = (col) => col.endsWith('_mV') ? col.slice(0, -3) : col;
+
+    const state = { svg: null, ema: Object.create(null) };
+
+    async function loadSVGInline(path){
+      try {
+        const res = await fetch(path, { cache: "no-cache" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const text = await res.text();
+
+        const host = document.getElementById('svgHost');
+        host.innerHTML = text;
+
+        const svg = host.querySelector('svg');
+        if (!svg) throw new Error("No <svg> element found in fetched file.");
+
+        // Force sensible sizing if width/height missing
+        svg.setAttribute('preserveAspectRatio', svg.getAttribute('preserveAspectRatio') || 'xMidYMid meet');
+        svg.style.width = '100%';
+        svg.style.maxWidth = '420px';
+        svg.style.height = 'auto';
+        svg.style.display = 'block';
+
+        state.svg = svg;
+
+        const bb = svg.getBoundingClientRect();
+        console.log('[svg] inline ok, size:', Math.round(bb.width)+'x'+Math.round(bb.height));
+        return true;
+      } catch (err) {
+        console.warn('[svg] inline failed:', err);
+        return false;
+      }
+    }
+
+    // Fallback: <object> embed (still lets us reach into the SVG DOM after load)
+    function mountObjectFallback(path){
+      const host = document.getElementById('svgHost');
+      host.innerHTML = "";
+      const obj = document.createElement('object');
+      obj.type = 'image/svg+xml';
+      obj.data = path + '?t=' + Date.now();  // bust cache
+      obj.style.width = '100%';
+      obj.style.maxWidth = '420px';
+      obj.style.height = 'auto';
+      obj.addEventListener('load', () => {
+        const doc = obj.contentDocument;
+        if (doc) {
+          state.svg = doc.querySelector('svg');
+          const bb = obj.getBoundingClientRect();
+          console.log('[svg] <object> ok, size:', Math.round(bb.width)+'x'+Math.round(bb.height));
+        }
+      });
+      host.appendChild(obj);
+    }
+
+    function paintOne(channelBase, mv){
+      if (!state.svg) return;
+      const el = state.svg.getElementById(channelBase);
+      if (!el) return;
+
+      const prev = state.ema[channelBase] ?? mv;
+      const val  = isFinite(mv) ? (EMA_ALPHA*mv + (1-EMA_ALPHA)*prev) : prev;
+      state.ema[channelBase] = val;
+
+      const t = clamp(val / MAX_MV_CLIP, 0, 1);
+      el.style.fill = heatColor01(t);
+      el.style.opacity = 0.95;
+      el.style.transition = 'fill 80ms linear';
+    }
+
+    function handleSample(sample){
+      for (const [k, v] of Object.entries(sample)) {
+        if (k === "time_ms") continue;
+        paintOne(baseName(k), parseFloat(v));
+      }
+    }
+
+    function startSSE(){
+      const es = new EventSource('/sse');
+      es.addEventListener('sample', ev => {
+        const sample = JSON.parse(ev.data);
+        handleSample(sample);
+      });
+      es.onerror = e => console.warn('[sse] error (browser will retry)', e);
+    }
+
+    (async function init(){
+      const ok = await loadSVGInline(SVG_PATH);
+      if (!ok) mountObjectFallback(SVG_PATH);
+      startSSE();
+    })();
+  </script>
 </body>
 </html>

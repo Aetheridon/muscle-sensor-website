@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 304 619">
+  <g id="Body-front" transform="translate(11, 30)">
+    <!-- Dark silhouette background -->
+    <path id="silhouette" fill="#1E2E47" d="M153.66,144.57 ...Z"></path>
+    
+    <!-- Overlay regions (placeholders for muscles) -->
+    <g id="regions" fill="#cccccc" fill-opacity="1" stroke="none">
+      <!-- Biceps -->
+      <ellipse id="left_bicep" cx="90" cy="200" rx="18" ry="28"></ellipse>
+      <ellipse id="right_bicep" cx="200" cy="200" rx="18" ry="28"></ellipse>
+
+      <!-- Pecs -->
+      <ellipse id="left_pec" cx="120" cy="150" rx="28" ry="20"></ellipse>
+      <ellipse id="right_pec" cx="170" cy="150" rx="28" ry="20"></ellipse>
+
+      <!-- Quads -->
+      <ellipse id="left_quad" cx="120" cy="300" rx="28" ry="38"></ellipse>
+      <ellipse id="right_quad" cx="170" cy="300" rx="28" ry="38"></ellipse>
+    </g>
+  </g>
+</svg>
